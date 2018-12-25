@@ -1,6 +1,7 @@
 #!/bin/env python
 import argparse
 import os
+import phpbb
 import re
 import subprocess
 
@@ -8,12 +9,10 @@ from cvm.controller import Browser
 from datetime import datetime
 from dateutil import tz
 from http.cookiejar import MozillaCookieJar
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 from requests.exceptions import ConnectionError
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver import Chrome, ChromeOptions
-
-import phpbb
 
 
 process_begin = datetime.now(tz=tz.tzlocal())
