@@ -1,5 +1,6 @@
 # phpbb-dl
 
+```
 usage: phpbb-dl [-h] [--username USERNAME] [--password PASSWORD]
                 [--output OUTPUT] [--reverse] [--incremental] [--full]
                 [--checkpoint CHECKPOINT] [--begin BEGIN] [--end END] [--keep]
@@ -36,3 +37,4 @@ optional arguments:
   --simulate, -s        simulate execution without writing to disk
   --tunnel TUNNEL, -t TUNNEL
                         Proxy Server (e.g. 127.0.0.1:8118)
+```
