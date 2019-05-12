@@ -92,7 +92,7 @@ parser.add_argument(
 parser.add_argument(
     'url', type=str, nargs='+',
     help="sequence of urls to access, of format: {}".format(str([
-        "<phpbb_root>/login.php",
+        "<phpbb_root>/index.php?login/",
         "<phpbb_root>/index.php",
         "<phpbb_root>/viewforum.php?f=<forum_id>",
         "<phpbb_root>/viewtopic.php?t=<topic_id>",
@@ -382,7 +382,7 @@ if args.keep and os.path.exists(jar.filename):
     browser.cookies.load(jar)
 
 rpaths = [
-    (r"/login\.php$", handle_login),
+    (r"/index\.php\?login(?:/[^\\]*)?$", handle_login),
     (r"/index\.php$", handle_index),
     (r"/index\.php\?forums/[^\\]+\.\d+/$", handle_forum),
     (r"/index\.php\?threads/[^\\]+\.\d+/$", handle_topic),
