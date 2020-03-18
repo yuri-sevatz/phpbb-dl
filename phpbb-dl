@@ -168,13 +168,14 @@ def handle_topic(path: str):
     while True:
         topic = browser.load(phpbb.Topic())
         for post in (topic.posts if not args.reverse else reversed(topic.posts)):
-            modified = valid_datetime(post.time.attribute('datetime'))
-            if (begin and begin > modified) or (end and modified < end):
-                if found_range:
-                    break
-                continue
-            else:
-                found_range = True
+            if post.time:
+                modified = valid_datetime(post.time.attribute('datetime'))
+                if (begin and begin > modified) or (end and modified < end):
+                    if found_range:
+                        break
+                    continue
+                else:
+                    found_range = True
             for attachment in post.attachments:
                 name = attachment.filename.text
                 href = attachment.download.attribute('href')
@@ -250,13 +251,14 @@ def handle_forum(path: str):
         for topic in (thread.topics if args.reverse else reversed(thread.topics)):
             name = topic.title.text
             href = topic.title.attribute('href')
-            modified = valid_datetime(topic.time.attribute('datetime'))
-            if (begin and begin > modified) or (end and modified < end):
-                if found_range:
-                    break
-                continue
-            else:
-                found_range = True
+            if topic.time:
+                modified = valid_datetime(topic.time.attribute('datetime'))
+                if (begin and begin > modified) or (end and modified < end):
+                    if found_range:
+                        break
+                    continue
+                else:
+                    found_range = True
             print('Topic: {} -> {}'.format(name, href))
             hrefs.add((name,href))
         else:
