@@ -249,6 +249,8 @@ def handle_forum(path: str):
     while True:
         thread = browser.load(phpbb.Forum())
         for topic in (thread.topics if args.reverse else reversed(thread.topics)):
+            if not topic.title:
+                continue
             name = topic.title.text
             href = topic.title.attribute('href')
             if topic.time:
