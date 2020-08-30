@@ -49,6 +49,7 @@ class Post(View):
         self.time = Field(Selector.CSS, ".message-attribution time")
         self.body = Group(Field(Selector.CSS, ".message-body"))
         self.attachments = Group(Attachment(Selector.CSS, ".message-attachments .attachment"))
+        self.videos = Group(Video(Selector.CSS, ".message-body .bbMediaWrapper video"))
 
 
 class Attachment(View):
@@ -57,6 +58,12 @@ class Attachment(View):
         self.filename = Field(Selector.CSS, ".attachment-name")
         self.download = Field(Selector.CSS, ".attachment-name a")
         self.preview = Field(Selector.TAG, ".attachment-icon")
+
+
+class Video(View):
+    def __init__(self, selector: Selector, value: str):
+        super().__init__(selector, value)
+        self.source = Field(selector.CSS, "source")
 
 
 class Nav(View):

@@ -14,9 +14,7 @@ from requests.exceptions import ConnectionError
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver import Chrome, ChromeOptions
 
-
 process_begin = datetime.now(tz=tz.tzlocal())
-
 
 def valid_datetime(s):
     try:
@@ -101,43 +99,43 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-begin = args.begin
-end = args.end
-
-checkpoint = None
-checkpoint_path = os.path.join(args.output, '.timestamp.chk')
-
 proxies = {'http': args.tunnel, 'https': args.tunnel, 'ftp': args.tunnel} if args.tunnel else {}
 
-if not args.full and (args.incremental or args.checkpoint):
-    try:
-        checkpoint = args.checkpoint if args.checkpoint else datetime.fromtimestamp(os.stat(checkpoint_path).st_mtime).replace(tzinfo=tz.tzutc(), second=0)
-        if begin and not begin <= checkpoint:
-            raise ValueError(
-                (
-                    "Checkpoint not in range [begin, end]: "
-                    "requires -b [--begin] {begin} <= -c [--checkpoint] {checkpoint}"
-                ).format(begin=begin, checkpoint=checkpoint)
-            )
-        if end and not checkpoint <= end:
-            raise ValueError(
-                (
-                    "Checkpoint not in range [begin, end]: "
-                    "requires -c [--checkpoint] {checkpoint} <= -e [--end] {end}"
-                ).format(checkpoint=checkpoint, end=end)
-            )
-        begin = checkpoint if not begin else max(begin, checkpoint)
-    except FileNotFoundError:
-        pass
-else:
-    if begin and end and not begin <= end:
-        raise ValueError(
-            (
-                "Cannot define range [begin, end]: "
-                "requires -b [--begin] {begin} <= -e [--end] {end}"
-            ).format(begin=args.begin, end=args.end)
-        )
+def datetime_range(checkpoint_path: str):
+    begin = args.begin
+    end = args.end
 
+    checkpoint = None
+
+    if not args.full and (args.incremental or args.checkpoint):
+        try:
+            checkpoint = args.checkpoint if args.checkpoint else datetime.fromtimestamp(os.stat(checkpoint_path).st_mtime).replace(tzinfo=tz.tzutc(), second=0)
+            if begin and not begin <= checkpoint:
+                raise ValueError(
+                    (
+                        "Checkpoint not in range [begin, end]: "
+                        "requires -b [--begin] {begin} <= -c [--checkpoint] {checkpoint}"
+                    ).format(begin=begin, checkpoint=checkpoint)
+                )
+            if end and not checkpoint <= end:
+                raise ValueError(
+                    (
+                        "Checkpoint not in range [begin, end]: "
+                        "requires -c [--checkpoint] {checkpoint} <= -e [--end] {end}"
+                    ).format(checkpoint=checkpoint, end=end)
+                )
+            begin = checkpoint if not begin else max(begin, checkpoint)
+        except FileNotFoundError:
+            pass
+    else:
+        if begin and end and not begin <= end:
+            raise ValueError(
+                (
+                    "Cannot define range [begin, end]: "
+                    "requires -b [--begin] {begin} <= -e [--end] {end}"
+                ).format(begin=args.begin, end=args.end)
+            )
+    return begin, end
 
 def windows_filename(filename: str):
     return filename\
@@ -154,9 +152,12 @@ def windows_filename(filename: str):
 
 MAX_RETRIES = 5
 
-def handle_topic(path: str):
+def handle_topic(path: str, start):
     print("handle_topic: {}".format(browser.url))
-    hrefs = set()
+    checkpoint_path = os.path.join(path, '.topic.timestamp.chk')
+    (begin,end) = datetime_range(checkpoint_path)
+    attachment_hrefs = set()
+    video_hrefs = set()
     if args.reverse:
         topic = browser.load(phpbb.Topic())
         if topic.nav:
@@ -179,7 +180,11 @@ def handle_topic(path: str):
             for attachment in post.attachments:
                 name = attachment.filename.text
                 href = attachment.download.attribute('href')
-                hrefs.add((name,href))
+                attachment_hrefs.add((name,href))
+            for video in post.videos:
+                href = video.source.attribute('src')
+                name = os.path.basename(href)
+                video_hrefs.add((name,href))
         else:
             if topic.nav:
                 if args.reverse:
@@ -215,14 +220,24 @@ def handle_topic(path: str):
                                         raise e
                         continue
         break
-    for name, href in hrefs:
+    for name, href in attachment_hrefs:
         match = re.match(r"attachments/(?:.+\.)?(\d+)/", urlparse(href).query)
-        download = os.path.join(path, '{}.{}'.format(match.group(1), name.replace('/', '')))
+        container = os.path.join(path, 'attachments')
+        download = os.path.join(container, '{}.{}'.format(match.group(1), name.replace('/', '')))
         if not os.path.exists(download):
-            print('GET {} ... '.format(href), end='', flush=True)
+            old_download = os.path.join(path, '{}.{}'.format(match.group(1), name.replace('/', '')))
+            if os.path.exists(old_download):
+                print('MOV {} => {}'.format(old_download, download), end='\n' if args.simulate else ' ... ', flush=True)
+                if not args.simulate:
+                    if not os.path.exists(container):
+                        os.makedirs(container)
+                    os.rename(old_download, download)
+                    print('Done!')
+                    continue
+            print('GET {} => {}'.format(href, download), end='\n' if args.simulate else ' ... ', flush=True)
             if not args.simulate:
-                if not os.path.exists(path):
-                    os.makedirs(path)
+                if not os.path.exists(container):
+                    os.makedirs(container)
                 for i in range(MAX_RETRIES):
                     try:
                         browser.save(href, download, proxies=proxies)
@@ -233,10 +248,36 @@ def handle_topic(path: str):
                             raise e
                         else:
                             print("\nError: {}".format(e))
+    for name, href in video_hrefs:
+        container = os.path.join(path, 'video')
+        download = os.path.join(container, name.replace('/', ''))
+        if not os.path.exists(download):
+            print('GET {} => {}... '.format(href, download), end='\n' if args.simulate else ' ... ', flush=True)
+            if not args.simulate:
+                if not os.path.exists(container):
+                    os.makedirs(container)
+                for i in range(MAX_RETRIES):
+                    try:
+                        browser.save(href, download, proxies=proxies)
+                        print('Done!')
+                        break
+                    except ConnectionError as e:
+                        if i == MAX_RETRIES:
+                            raise e
+                        else:
+                            print("\nError: {}".format(e))
+    process_end = start if not end else min(end, start)
+    if not args.simulate and (args.full or args.incremental):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        with open(checkpoint_path, 'a'):
+            os.utime(checkpoint_path, (process_end.timestamp(), process_end.timestamp()))
 
 
-def handle_forum(path: str):
+def handle_forum(path: str, start):
     print("handle_forum: {}".format(browser.url))
+    checkpoint_path = os.path.join(path, '.forum.timestamp.chk')
+    (begin,end) = datetime_range(checkpoint_path)
     hrefs = set()
     if not args.reverse:
         forum = browser.load(phpbb.Forum())
@@ -305,6 +346,7 @@ def handle_forum(path: str):
         query = urlparse(href).query
         match = re.match(r"threads/(?:.+\.)?(\d+)/", query)
         directory = os.path.join(path, 'topic.{}.{}'.format(match.group(1), name.replace('/', '')))
+        now = datetime.now(tz=tz.tzlocal())
         for i in range(MAX_RETRIES):
             try:
                 browser.url = href
@@ -312,11 +354,19 @@ def handle_forum(path: str):
             except TimeoutException as e:
                 if i == MAX_RETRIES:
                     raise e
-        handle_topic(directory)
+        handle_topic(directory, now)
+    process_end = start if not end else min(end, start)
+    if not args.simulate and (args.full or args.incremental):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        with open(checkpoint_path, 'a'):
+            os.utime(checkpoint_path, (process_end.timestamp(), process_end.timestamp()))
 
 
-def handle_index(path: str):
+def handle_index(path: str, start):
     print("handle_index: {}".format(browser.url))
+    checkpoint_path = os.path.join(path, '.index.timestamp.chk')
+    (begin,end) = datetime_range(checkpoint_path)
     hrefs = []
     index = browser.load(phpbb.Index())
     for thread in index.threads:
@@ -333,6 +383,7 @@ def handle_index(path: str):
         query = urlparse(href).query
         match = re.match(r"forums/(?:.+\.)?(\d+)/", query)
         directory = os.path.join(path, 'forum.{}.{}'.format(match.group(1), name.replace('/', '')))
+        now = datetime.now(tz=tz.tzlocal())
         for i in range(MAX_RETRIES):
             try:
                 browser.url = href
@@ -340,11 +391,17 @@ def handle_index(path: str):
             except TimeoutException as e:
                 if i == MAX_RETRIES:
                     raise e
-        handle_forum(directory)
+        handle_forum(directory, now)
+    process_end = start if not end else min(end, start)
+    if not args.simulate and (args.full or args.incremental):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        with open(checkpoint_path, 'a'):
+            os.utime(checkpoint_path, (process_end.timestamp(), process_end.timestamp()))
 
 
 
-def handle_login(path: str):
+def handle_login(path: str, start):
     print("handle_login: {}".format(browser.url))
     login = browser.load(phpbb.Login())
     login.username.input(args.username)
@@ -396,15 +453,12 @@ try:
     for url in args.url:
         for pattern, func in rpaths:
             if re.search(pattern, url):
+                now = datetime.now(tz=tz.tzlocal())
                 browser.url = url
-                func(args.output)
+                func(args.output, now)
                 break
         else:
             raise ValueError("Url path must match one of {}".format(str([pattern for pattern, func in rpaths])))
-    process_end = process_begin if not end else min(end, process_begin)
-    if not args.simulate and (args.full or args.incremental):
-        with open(checkpoint_path, 'a'):
-            os.utime(checkpoint_path, (process_end.timestamp(), process_end.timestamp()))
     if args.keep:
         browser.cookies.save(jar)
         jar.save()
