@@ -32,7 +32,7 @@ class Forum(Page):
 class TopicItem(View):
     def __init__(self, selector: Selector, value: str):
         super().__init__(selector, value)
-        self.title = Field(Selector.CSS, ".structItem-title a")
+        self.title = Field(Selector.CSS, ".structItem-title a:not(.labelLink)")
         self.time = Field(Selector.CSS, ".structItem-cell--latest time")
 
 
